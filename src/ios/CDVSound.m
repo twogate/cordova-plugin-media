@@ -43,7 +43,77 @@ BOOL keepAvAudioSessionAlwaysActive = NO;
             }
         }
     }
+    [self configureAVAudioSession];
 }
+
+- (void)onAppTerminate
+{
+    [self unconfigureAVAudioSession];
+}
+
+- (void)configureAVAudioSession {
+    [self changeRoute];
+    
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(didSessionRouteChange:) name:AVAudioSessionRouteChangeNotification object:nil];
+}
+
+- (void)unconfigureAVAudioSession {
+    [[NSNotificationCenter defaultCenter] removeObserver:self name:AVAudioSessionRouteChangeNotification object:nil];
+}
+
+- (void)changeRoute {
+    NSError* error;
+    
+    AVAudioSession *session = avSession;
+    
+    if ([self isHeadsetPluggedIn]) {
+        [session setCategory:AVAudioSessionCategoryPlayback error:&error];
+        [session overrideOutputAudioPort: AVAudioSessionPortOverrideNone error:&error];
+    } else {
+        [session setCategory:AVAudioSessionCategoryPlayAndRecord
+                 withOptions:AVAudioSessionCategoryOptionAllowBluetoothA2DP
+                       error:&error];
+        [session overrideOutputAudioPort:kAudioSessionProperty_OverrideAudioRoute error:&error];
+    }
+}
+
+- (void)didSessionRouteChange:(NSNotification *)notification {
+    NSDictionary *interuptionDict = notification.userInfo;
+    NSInteger routeChangeReason = [[interuptionDict valueForKey:AVAudioSessionRouteChangeReasonKey] integerValue];
+    NSLog(@"AVAudioSessionRouteChangeReasonKey: %zd", routeChangeReason);
+    
+    switch (routeChangeReason) {
+            // 取り外し
+        case AVAudioSessionRouteChangeReasonOldDeviceUnavailable: {
+            [self changeRoute];
+        }
+            break;
+            
+            // 新規接続
+        case AVAudioSessionRouteChangeReasonNewDeviceAvailable: {
+            [self changeRoute];
+        }
+            
+        default:
+            break;
+    }
+}
+
+- (BOOL)isHeadsetPluggedIn {
+    // headphone と定義する output
+    NSSet *headphoneStrings = [NSSet setWithObjects:AVAudioSessionPortHeadphones,
+                               AVAudioSessionPortBluetoothA2DP,
+                               nil];
+    
+    AVAudioSessionRouteDescription* route = [[AVAudioSession sharedInstance] currentRoute];
+    for (AVAudioSessionPortDescription* desc in [route outputs]) {
+        if ([headphoneStrings containsObject:[desc portType]]) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
 
 // Maps a url for a resource path for recording
 - (NSURL*)urlForRecording:(NSString*)resourcePath
@@ -366,8 +436,7 @@ BOOL keepAvAudioSessionAlwaysActive = NO;
                     bPlayAudioWhenScreenIsLocked = [playAudioWhenScreenIsLocked boolValue];
                 }
 
-                NSString* sessionCategory = bPlayAudioWhenScreenIsLocked ? AVAudioSessionCategoryPlayback : AVAudioSessionCategorySoloAmbient;
-                [self.avSession setCategory:sessionCategory error:&err];
+                [self changeRoute];
                 if (![self.avSession setActive:YES error:&err]) {
                     // other audio with higher priority that does not allow mixing could cause this to fail
                     NSLog(@"Unable to play audio: %@", [err localizedFailureReason]);
