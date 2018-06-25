@@ -704,7 +704,7 @@ BOOL keepAvAudioSessionAlwaysActive = NO;
     CDVAudioFile* audioFile = [[self soundCache] objectForKey:mediaId];
     double position = -1;
 
-    if ((audioFile != nil) && (audioFile.player != nil) && [audioFile.player isPlaying]) {
+    if ((audioFile != nil) && (audioFile.player != nil)) {
         position = round(audioFile.player.currentTime * 1000) / 1000;
     }
     if (avPlayer) {
